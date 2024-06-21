@@ -66,7 +66,7 @@ set(mi_sources
 set(mi_cflags "")
 set(mi_cflags_static "")            # extra flags for a static library build
 set(mi_cflags_dynamic "")           # extra flags for a shared-object library build
-set(mi_defines "")                   
+set(mi_defines "")
 set(mi_libraries "")
 
 # -----------------------------------------------------------------------------
@@ -263,6 +263,7 @@ if(MI_DEBUG_UBSAN)
   if(CMAKE_BUILD_TYPE MATCHES "Debug")
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       message(STATUS "Build with undefined-behavior sanitizer (MI_DEBUG_UBSAN=ON)")
+      list(APPEND mi_defines MI_UBSAN=1)
       list(APPEND mi_cflags -fsanitize=undefined -g -fno-sanitize-recover=undefined)
       list(APPEND mi_libraries -fsanitize=undefined)
       if (NOT MI_USE_CXX)
@@ -332,7 +333,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel" AND NOT CMAKE_SYSTEM
       list(APPEND mi_cflags_dynamic -ftls-model=initial-exec)
       message(STATUS "Use local dynamic TLS for the static build (since MI_LIBC_MUSL=ON)")
     else()
-      list(APPEND mi_cflags -ftls-model=initial-exec)    
+      list(APPEND mi_cflags -ftls-model=initial-exec)
     endif()
   endif()
   if(MI_OVERRIDE)
@@ -344,20 +345,24 @@ if (MSVC AND MSVC_VERSION GREATER_EQUAL 1914)
   list(APPEND mi_cflags /Zc:__cplusplus)
 endif()
 
+if(MINGW)
+  add_definitions(-D_WIN32_WINNT=0x600)
+endif()
+
 # extra needed libraries
 
-# we prefer -l<lib> test over `find_library` as sometimes core libraries 
+# we prefer -l<lib> test over `find_library` as sometimes core libraries
 # like `libatomic` are not on the system path (see issue #898)
-function(find_link_library libname outlibname)  
-  check_linker_flag(C "-l${libname}" mi_has_lib${libname})  
+function(find_link_library libname outlibname)
+  check_linker_flag(C "-l${libname}" mi_has_lib${libname})
   if (mi_has_lib${libname})
     message(VERBOSE "link library: -l${libname}")
-    set(${outlibname} ${libname} PARENT_SCOPE)    
+    set(${outlibname} ${libname} PARENT_SCOPE)
   else()
     find_library(MI_LIBPATH libname)
     if (MI_LIBPATH)
       message(VERBOSE "link library ${libname} at ${MI_LIBPATH}")
-      set(${outlibname} ${MI_LIBPATH} PARENT_SCOPE)      
+      set(${outlibname} ${MI_LIBPATH} PARENT_SCOPE)
     else()
       message(VERBOSE "link library not found: ${libname}")
       set(${outlibname} "" PARENT_SCOPE)
@@ -366,19 +371,19 @@ function(find_link_library libname outlibname)
 endfunction()
 
 if(WIN32)
-  list(APPEND mi_libraries psapi shell32 user32 advapi32 bcrypt)  
+  list(APPEND mi_libraries psapi shell32 user32 advapi32 bcrypt)
 else()
   find_link_library("pthread" MI_LIB_PTHREAD)
-  if(MI_LIB_PTHREAD) 
+  if(MI_LIB_PTHREAD)
     list(APPEND mi_libraries "${MI_LIB_PTHREAD}")
   endif()
   find_link_library("rt" MI_LIB_RT)
-  if(MI_LIB_RT) 
+  if(MI_LIB_RT)
     list(APPEND mi_libraries "${MI_LIB_RT}")
   endif()
   find_link_library("atomic" MI_LIB_ATOMIC)
-  if(MI_LIB_ATOMIC) 
-    list(APPEND mi_libraries "${MI_LIB_ATOMIC}")  
+  if(MI_LIB_ATOMIC)
+    list(APPEND mi_libraries "${MI_LIB_ATOMIC}")
   endif()
 endif()
 
@@ -387,7 +392,8 @@ endif()
 # -----------------------------------------------------------------------------
 
 # dynamic/shared library and symlinks always go to /usr/local/lib equivalent
-set(mi_install_libdir   "${CMAKE_INSTALL_LIBDIR}")
+set(mi_install_libdir       "${CMAKE_INSTALL_LIBDIR}")
+set(mi_install_bindir       "${CMAKE_INSTALL_BINDIR}")
 
 # static libraries and object files, includes, and cmake config files
 # are either installed at top level, or use versioned directories for side-by-side installation (default)
@@ -471,10 +477,10 @@ if(MI_BUILD_SHARED)
     add_custom_command(TARGET mimalloc POST_BUILD
       COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/bin/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" $<TARGET_FILE_DIR:mimalloc>
       COMMENT "Copy mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll to output directory")
-    install(FILES "$<TARGET_FILE_DIR:mimalloc>/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" DESTINATION ${mi_install_libdir})
+    install(FILES "$<TARGET_FILE_DIR:mimalloc>/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" DESTINATION ${mi_install_bindir})
   endif()
 
-  install(TARGETS mimalloc EXPORT mimalloc DESTINATION ${mi_install_libdir} LIBRARY)
+  install(TARGETS mimalloc EXPORT mimalloc ARCHIVE DESTINATION ${mi_install_libdir} RUNTIME DESTINATION ${mi_install_bindir} LIBRARY DESTINATION ${mi_install_libdir})
   install(EXPORT mimalloc DESTINATION ${mi_install_cmakedir})
 endif()
 
